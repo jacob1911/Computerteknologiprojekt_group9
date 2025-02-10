@@ -2,3 +2,5 @@ Robotnr.: 15
 SD-kort: 7
 
 Pixel IP: 192.168.62.241
+
+WIFI BEAN: 192.168.86.241/24
