@@ -13,6 +13,11 @@ time.sleep(1)
 
 print("Reading colour values and displaying them in a new window\n")
 
+def convert_data(data, index):
+    return data[index + 1] + data[index] / 256
+
+threshold = 0.38
+
 def getAndUpdateColour():
     while True:
 	# Read the data from the sensor
@@ -24,15 +29,37 @@ def getAndUpdateColour():
         # Output data to the console RGB values
         # Uncomment the line below when you have read the red, green and blue values
         # print("RGB(%d %d %d)" % (red, green, blue))
-        print("New reading:\n")
-        print(data)
-        print("\n")
-        print("\ngreen:")
-        print(data[1] + data[0] / 256)
-        print("\nred: ")
-        print(data[3] + data[2] / 256)
-        print("\nblue: ")
-        print(data[5] + data[4] / 256)
+        print("\nNew reading:\n")
+        green = convert_data(data, 0)
+        red = convert_data(data, 2)
+        blue = convert_data(data, 4)
+
+        blue = blue * 2.35
+
+        total = green + red + blue
+        
+        green = green / total
+        red = red / total
+        blue = blue / total
+
+        print("\ncolor: ")
+
+        if(green > threshold):
+            print("green")
+        elif(red > threshold):
+            print("red")
+        elif(blue > threshold):
+            print("blue")
+        else:
+            print("no color detected")
+
+        print(f"\ngreen: {green}")
+        print(f"\nred: {red}")
+        print(f"\nblue: {blue}")
+
+
+        print(f"\nRaw data:{data}\n")
+
 
         
         time.sleep(2) 
