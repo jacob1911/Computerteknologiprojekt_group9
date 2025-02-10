@@ -1,0 +1,4 @@
+Robotnr.: 15
+SD-kort: 7
+
+Pixel IP: 192.168.62.241

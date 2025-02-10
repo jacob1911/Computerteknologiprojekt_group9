@@ -1,0 +1,137 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\sebki> ssh ubuntu@192.168.2.10
+The authenticity of host '192.168.2.10 (192.168.2.10)' can't be established.
+ED25519 key fingerprint is SHA256:MvRRr4+P6u94bpvurspdBNUYd5xbwBMhXQ/sCEgk0ic.
+This key is not known by any other names.
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '192.168.2.10' (ED25519) to the list of known hosts.
+(ubuntu@192.168.2.10) Password:
+Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 5.15.0-1070-raspi aarch64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Mon Jan 20 04:27:29 PM UTC 2025
+
+  System load:  0.03               Temperature:           46.7 C
+  Usage of /:   24.6% of 28.72GB   Processes:             139
+  Memory usage: 21%                Users logged in:       0
+  Swap usage:   0%                 IPv4 address for eth0: 192.168.2.10
+
+
+Expanded Security Maintenance for Applications is not enabled.
+
+0 updates can be applied immediately.
+
+29 additional security updates can be applied with ESM Apps.
+Learn more about enabling ESM Apps service at https://ubuntu.com/esm
+
+New release '24.04.1 LTS' available.
+Run 'do-release-upgrade' to upgrade to it.
+
+
+Last login: Mon Jan 20 16:14:17 2025 from 192.168.2.1
+ubuntu@ubuntu:~$ ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether b8:27:eb:c2:85:95 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.2.10/24 brd 192.168.2.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::ba27:ebff:fec2:8595/64 scope link
+       valid_lft forever preferred_lft forever
+3: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc fq_codel state DOWN group default qlen 1000
+    link/ether b8:27:eb:97:d0:c0 brd ff:ff:ff:ff:ff:ff
+ubuntu@ubuntu:~$ dir
+ubuntu@ubuntu:~$ cd
+ubuntu@ubuntu:~$ pwd
+/home/ubuntu
+ubuntu@ubuntu:~$ ls
+ubuntu@ubuntu:~$ mkdir project
+ubuntu@ubuntu:~$ ls
+project
+ubuntu@ubuntu:~$ cd project
+ubuntu@ubuntu:~/project$ cd
+ubuntu@ubuntu:~$ ls
+project
+ubuntu@ubuntu:~$ rm project
+rm: cannot remove 'project': Is a directory
+ubuntu@ubuntu:~$ del project
+Command 'del' not found, did you mean:
+  command 'mdel' from deb mtools (4.0.33-1+really4.0.32-1build1)
+  command 'deal' from deb deal (3.1.9-12)
+  command 'dll' from deb brickos (0.9.0.dfsg-12.2)
+  command 'hdel' from deb hfsutils (3.2.6-15build2)
+  command 'wdel' from deb wput (0.6.2+git20130413-11)
+  command 'qdel' from deb gridengine-client (8.1.9+dfsg-10build1)
+  command 'qdel' from deb slurm-wlm-torque (21.08.5-2ubuntu1)
+  command 'dex' from deb dex (0.9.0-1)
+  command 'delv' from deb bind9-dnsutils (1:9.18.28-0ubuntu0.22.04.1)
+  command 'el' from deb oneliner-el (0.3.6-9.1)
+  command 'delp' from deb fp-utils-3.2.2 (3.2.2+dfsg-9ubuntu1)
+Try: sudo apt install <deb name>
+ubuntu@ubuntu:~$ rmdir project
+ubuntu@ubuntu:~$ ls
+ubuntu@ubuntu:~$ mkdir project
+ubuntu@ubuntu:~$ cd project
+ubuntu@ubuntu:~/project$ touch bean.txt
+ubuntu@ubuntu:~/project$ ls
+bean.txt
+ubuntu@ubuntu:~/project$ rm bean
+rm: cannot remove 'bean': No such file or directory
+ubuntu@ubuntu:~/project$ rm bean.txt
+ubuntu@ubuntu:~/project$ cd
+ubuntu@ubuntu:~$ cd project
+ubuntu@ubuntu:~/project$ touch bean.txt
+ubuntu@ubuntu:~/project$ echo "joke">>bean.txt
+ubuntu@ubuntu:~/project$ cat bean.txt
+joke
+ubuntu@ubuntu:~/project$ cd
+ubuntu@ubuntu:~$ ls
+project
+ubuntu@ubuntu:~$ ls
+project
+ubuntu@ubuntu:~$ cd projcet
+-bash: cd: projcet: No such file or directory
+ubuntu@ubuntu:~$ cd project
+ubuntu@ubuntu:~/project$ ls
+bean.txt
+ubuntu@ubuntu:~/project$ pwd
+/home/ubuntu/project
+ubuntu@ubuntu:~/project$ cd
+ubuntu@ubuntu:~$ cd
+ubuntu@ubuntu:~$ cd
+ubuntu@ubuntu:~$ pwd
+/home/ubuntu
+ubuntu@ubuntu:~$ ld
+ld: no input files
+ubuntu@ubuntu:~$ ls
+notes.txt  project
+ubuntu@ubuntu:~$ cat notes.txt
+Robotnr.: 15
+ubuntu@ubuntu:~$ cd project
+ubuntu@ubuntu:~/project$ scp bean.txt ubuntu@192.168.2.10:C:\Users\sebki\Computerteknologiprojekt\Computerteknologiprojekt_group9\
+>
+The authenticity of host '192.168.2.10 (192.168.2.10)' can't be established.
+ED25519 key fingerprint is SHA256:MvRRr4+P6u94bpvurspdBNUYd5xbwBMhXQ/sCEgk0ic.
+This key is not known by any other names
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '192.168.2.10' (ED25519) to the list of known hosts.
+(ubuntu@192.168.2.10) Password:
+bean.txt                                                                                                                  100%    5     3.2KB/s   00:00
+ubuntu@ubuntu:~/project$ scp ubuntu@192.168.2.10:bean.txt C:\Users\sebki\Computerteknologiprojekt\Computerteknologiprojekt_group9
+ssh: Could not resolve hostname c: Temporary failure in name resolution
+(ubuntu@192.168.2.10) Password:
+ubuntu@ubuntu:~/project$ cd
+ubuntu@ubuntu:~$ pwd
+/home/ubuntu
+ubuntu@ubuntu:~$
