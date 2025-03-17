@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TurtleBot3 Live Map</title>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; }
+        canvas { border: 2px solid black; background-color: lightgray; }
+    </style>
+</head>
+<body>
+    <h2>TurtleBot3 Live Tracking</h2>
+    <canvas id="mapCanvas" width="500" height="500"></canvas>
+    
+    <script>
+        const canvas = document.getElementById("mapCanvas");
+        const ctx = canvas.getContext("2d");
+        let scale = 50;  // Scale factor for visualization
+        let positions = [];
+
+        function fetchPosition() {
+            fetch("/position")
+                .then(response => response.json())
+                .then(data => {
+                    positions.push({ x: data.x, y: data.y });
+
+                    // Clear canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = "blue";
+
+                    // Draw path
+                    for (let i = 0; i < positions.length; i++) {
+                        ctx.fillRect(canvas.width / 2 + positions[i].x * scale, 
+                                     canvas.height / 2 - positions[i].y * scale, 
+                                     5, 5);
+                    }
+
+                    // Draw current position
+                    ctx.fillStyle = "red";
+                    ctx.beginPath();
+                    ctx.arc(canvas.width / 2 + data.x * scale, 
+                            canvas.height / 2 - data.y * scale, 
+                            5, 0, 2 * Math.PI);
+                    ctx.fill();
+                })
+                .catch(error => console.error("Error fetching position:", error));
+        }
+
+        // Update position every 100ms
+        setInterval(fetchPosition, 100);
+    </script>
+</body>
+</html>

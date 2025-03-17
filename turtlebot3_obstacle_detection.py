@@ -23,7 +23,7 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.qos import QoSProfile
 from sensor_msgs.msg import LaserScan
 import time
-
+import math
 
 class Turtlebot3ObstacleDetection(Node):
 
@@ -63,6 +63,12 @@ class Turtlebot3ObstacleDetection(Node):
 
     def scan_callback(self, msg):
         self.scan_ranges = msg.ranges
+        
+        for i in range(len(self.scan_ranges)):
+            cur_val = self.scan_ranges[i]
+            if (not (0 < cur_val and cur_val <= 3.5)):
+                self.scan_ranges[i] = 3.5
+        
         self.has_scan_received = True
 
     def cmd_vel_raw_callback(self, msg):
@@ -79,6 +85,9 @@ class Turtlebot3ObstacleDetection(Node):
 
         mid_index = int(len(self.scan_ranges) / 2)
         front_distance = min(self.scan_ranges[mid_index - front_range: mid_index + front_range]) 
+
+        # if(math.isnan(front_distance)):
+        #     front_distance = 3.5
 
         obstacle_distance = min(
             min(self.scan_ranges[0:left_range]),
