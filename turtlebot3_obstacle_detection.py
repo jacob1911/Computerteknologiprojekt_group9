@@ -24,6 +24,13 @@ from rclpy.qos import QoSProfile
 from sensor_msgs.msg import LaserScan
 import time as t
 import numpy as np
+import smbus
+
+
+def convert_data(data, index):
+    return data[index + 1] + data[index] / 256
+
+threshold = 0.38
 
 class Turtlebot3ObstacleDetection(Node):
 
@@ -39,6 +46,15 @@ class Turtlebot3ObstacleDetection(Node):
         self.scan_ranges = []
         self.divisions = 20
         self.has_scan_received = False
+
+        self.bus = smbus.SMBus(1)
+        self.bus.write_byte_data(0x44, 0x01, 0x05)  # Configure the sensor
+        self.color_detect = ""
+        self.counter_green = 0
+        self.counter_red = 0
+        self.counter_blue = 0
+        self.color_detected = False
+
         
         self.collide_distance = 0.16
         self.stop_distance = 0.2
@@ -46,7 +62,7 @@ class Turtlebot3ObstacleDetection(Node):
         self.max_speed = 0.2
         
         self.turn_thresh = 5.
-        self.duration = 120.
+        self.duration = 45.
         self.l_d = 1.
         self.r_d = -1.
 
@@ -80,6 +96,63 @@ class Turtlebot3ObstacleDetection(Node):
 
         self.timer = self.create_timer(0.1, self.timer_callback)
 
+    # ____________________________________RGB SENSOR____________________________________
+   
+    def get_and_update_color(self):
+            
+            data = self.bus.read_i2c_block_data(0x44, 0x09, 6)
+            # Convert the data to green, red and blue int values
+            # Insert code here
+            
+            # Output data to the console RGB values
+            # Uncomment the line below when you have read the red, green and blue values
+            # print("RGB(%d %d %d)" % (red, green, blue))
+            green = convert_data(data, 0)
+            red = convert_data(data, 2)
+            blue = convert_data(data, 4)
+
+            blue = blue * 2.35
+
+            total = green + red + blue
+            
+            green = green / total
+            red = red / total
+            blue = blue / total
+
+            if(green > threshold):
+                self.color_detect = "green"
+            elif(red > threshold):
+                self.color_detect = "red"
+            elif(blue > threshold):
+                self.color_detect = "blue"
+            else:
+                self.color_detect = "no color detected"
+
+
+            if not self.color_detected:
+                if self.color_detect == "green":
+                    self.counter_green += 1
+                    self.color_detected = True
+                    
+                elif self.color_detect == "red":
+                    self.counter_red += 1
+                    self.color_detected = True
+
+                elif self.color_detect == "blue":
+                    self.counter_blue += 1
+                    self.color_detected = True
+                
+            else:
+                # print("im currently at a color")
+                if not self.color_detect in ["green", "red", "blue"]:
+                    self.color_detected = False
+            
+                
+            print("\ncolor detected: ", self.color_detect)
+
+    # ____________________________________RGB SENSOR____________________________________
+
+
     def scan_callback(self, msg):
         self.scan_ranges = msg.ranges
         
@@ -93,7 +166,7 @@ class Turtlebot3ObstacleDetection(Node):
 
     def cmd_vel_raw_callback(self, msg):
         self.tele_twist = msg
-
+    
     def timer_callback(self):
         # current_time = self.get_clock().now().nanoseconds / 1e9
         
@@ -104,6 +177,9 @@ class Turtlebot3ObstacleDetection(Node):
         
         if self.has_scan_received:
             self.detect_obstacle()
+
+        self.get_and_update_color()
+        
 
     # Lineær udvikling af konstanten
     def angle_factor(self,front_d):
@@ -151,6 +227,7 @@ class Turtlebot3ObstacleDetection(Node):
         # Printer gennemsnitshastighed
         print(f"Average Linear Speed: {self.speed_acc / self.loop_count}")
         print(f"Collision counter: {self.collision_counter}")
+        print(f"Color detected:\n Red: {self.counter_red}, Green: {self.counter_green}, Blue: {self.counter_blue}")
         
         # Stopper robotten
         twist = Twist()
