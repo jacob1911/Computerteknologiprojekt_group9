@@ -24,6 +24,13 @@ from rclpy.qos import QoSProfile
 from sensor_msgs.msg import LaserScan
 import time as t
 import numpy as np
+import smbus
+
+
+def convert_data(data, index):
+    return data[index + 1] + data[index] / 256
+
+threshold = 0.38
 
 class Turtlebot3ObstacleDetection(Node):
 
@@ -39,14 +46,23 @@ class Turtlebot3ObstacleDetection(Node):
         self.scan_ranges = []
         self.divisions = 20
         self.has_scan_received = False
+
+        self.bus = smbus.SMBus(1)
+        self.bus.write_byte_data(0x44, 0x01, 0x05)  # Configure the sensor
+        self.color_detect = ""
+        self.counter_green = 0
+        self.counter_red = 0
+        self.counter_blue = 0
+        self.color_detected = False
+
         
         self.collide_distance = 0.16
         self.stop_distance = 0.2
         self.start_turning = 0.7
-        self.max_speed = 0.2
+        self.max_speed = 0.0 # 0.2
         
         self.turn_thresh = 5.
-        self.duration = 120.
+        self.duration = 45.
         self.l_d = 1.
         self.r_d = -1.
 
@@ -54,12 +70,13 @@ class Turtlebot3ObstacleDetection(Node):
         self.loop_count = 0.
         self.collision_counter = 0
         self.colliding = False
+        self.collide_length_scan_ranges = 160
 
         self.go = False
 
         self.tele_twist = Twist()
         self.tele_twist.linear.x = self.max_speed
-        self.max_angle = 1.28
+        self.max_angle = 0 # 1.28
         self.tele_twist.angular.z = 0.0
         self.turn_factor = 1.
         qos = QoSProfile(depth=10)
@@ -80,6 +97,63 @@ class Turtlebot3ObstacleDetection(Node):
 
         self.timer = self.create_timer(0.1, self.timer_callback)
 
+    # ____________________________________RGB SENSOR____________________________________
+   
+    def get_and_update_color(self):
+            
+            data = self.bus.read_i2c_block_data(0x44, 0x09, 6)
+            # Convert the data to green, red and blue int values
+            # Insert code here
+            
+            # Output data to the console RGB values
+            # Uncomment the line below when you have read the red, green and blue values
+            # print("RGB(%d %d %d)" % (red, green, blue))
+            green = convert_data(data, 0)
+            red = convert_data(data, 2)
+            blue = convert_data(data, 4)
+
+            blue = blue * 2.35
+
+            total = green + red + blue
+            
+            green = green / total
+            red = red / total
+            blue = blue / total
+
+            if(green > threshold):
+                self.color_detect = "green"
+            elif(red > threshold):
+                self.color_detect = "red"
+            elif(blue > threshold):
+                self.color_detect = "blue"
+            else:
+                self.color_detect = "no color detected"
+
+
+            if not self.color_detected:
+                if self.color_detect == "green":
+                    self.counter_green += 1
+                    self.color_detected = True
+                    
+                elif self.color_detect == "red":
+                    self.counter_red += 1
+                    self.color_detected = True
+
+                elif self.color_detect == "blue":
+                    self.counter_blue += 1
+                    self.color_detected = True
+                
+            else:
+                # print("im currently at a color")
+                if not self.color_detect in ["green", "red", "blue"]:
+                    self.color_detected = False
+            
+                
+            # print("\ncolor detected: ", self.color_detect)
+
+    # ____________________________________RGB SENSOR____________________________________
+
+
     def scan_callback(self, msg):
         self.scan_ranges = msg.ranges
         
@@ -93,7 +167,7 @@ class Turtlebot3ObstacleDetection(Node):
 
     def cmd_vel_raw_callback(self, msg):
         self.tele_twist = msg
-
+    
     def timer_callback(self):
         # current_time = self.get_clock().now().nanoseconds / 1e9
         
@@ -104,6 +178,9 @@ class Turtlebot3ObstacleDetection(Node):
         
         if self.has_scan_received:
             self.detect_obstacle()
+
+        self.get_and_update_color()
+        
 
     # Lineær udvikling af konstanten
     def angle_factor(self,front_d):
@@ -151,6 +228,7 @@ class Turtlebot3ObstacleDetection(Node):
         # Printer gennemsnitshastighed
         print(f"Average Linear Speed: {self.speed_acc / self.loop_count}")
         print(f"Collision counter: {self.collision_counter}")
+        print(f"Color detected:\n Red: {self.counter_red}, Green: {self.counter_green}, Blue: {self.counter_blue}")
         
         # Stopper robotten
         twist = Twist()
@@ -159,11 +237,9 @@ class Turtlebot3ObstacleDetection(Node):
         self.cmd_vel_pub.publish(twist)
             
 
-    def detect_obstacle(self):
-
+    def set_distances(self):
         len_scan_range = len(self.scan_ranges)
         range_size = int(len_scan_range / self.divisions)
-
         left_distances = []
         for i in range(self.divisions // 4):
             min_val = min(self.scan_ranges[range_size * i: range_size * (i + 1)])
@@ -174,32 +250,36 @@ class Turtlebot3ObstacleDetection(Node):
             min_val = min(self.scan_ranges[(len_scan_range-1) - range_size * (i + 1) : (len_scan_range-1) - range_size * i])
             right_distances.append(min_val)
         
-        front_distance = min(left_distances[0], right_distances[0])
+        return right_distances, left_distances
 
-        # temp_array = self.scan_ranges[-range_size:] + self.scan_ranges[:range_size]
-        # if(self.go):
-        #     dif = [a - b for a, b in zip(temp_array, self.prev_array)]
-        #     print(f"minimum: {min(dif)}, maximum: {max(dif)}")
-        # else:
-        #     self.go = True
-        # self.prev_array = temp_array
-        # ## TIDLIGERE VERSION ##front_distance = min(self.scan_ranges[mid_index - front_range: mid_index + front_range]) 
+    def detect_obstacle(self):
+
         
-        # min_val_lobe = min(min(left_distances), min(right_distances))
-        # print(f"min val lobe:{min_val_lobe}")
-        # if(not self.colliding):
-        #     if min_val_lobe < self.collide_distance:
-        #         self.collision_counter+=1
-        #         print("_______________I COLLIDED____________________")
-        #         self.colliding = True
-        # else:
-        #     print("I am currently colliding!")
-        #     if min_val_lobe > self.collide_distance:
-        #         self.colliding = False
+        right_distances, left_distances = self.set_distances()
+        
+        
+        front_distance = min(left_distances[0], right_distances[0])
+        
+        under_16 = 0
+        for i in self.scan_ranges:
+            if i < 0.16:
+                under_16 += 1
+        
+        len_scan_ranges = len(self.scan_ranges)
+        rel_16 = under_16 / len_scan_ranges
+        print(f"Readings under 16: {under_16}. Relative readings under 16: {rel_16}. Length of scan ranges: {len_scan_ranges}.")
 
         twist = Twist()
-        # 1) Checks if it should stop
         
+        if len_scan_ranges > self.collide_length_scan_ranges and self.colliding==False:
+            self.collision_counter +=1
+            self.colliding = True
+        else:
+            print(('Im colliding'))
+            if len_scan_ranges < self.collide_length_scan_ranges:
+                self.colliding = False
+        
+        # 1) Checks if it should stop
         if front_distance < self.stop_distance:
             twist.linear.x = 0.0
             self.set_rot_d(right_distances, left_distances)

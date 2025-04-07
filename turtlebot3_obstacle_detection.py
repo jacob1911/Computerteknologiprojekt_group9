@@ -49,30 +49,34 @@ class Turtlebot3ObstacleDetection(Node):
 
         self.bus = smbus.SMBus(1)
         self.bus.write_byte_data(0x44, 0x01, 0x05)  # Configure the sensor
-        self.color_detect = ""
         self.counter_green = 0
         self.counter_red = 0
         self.counter_blue = 0
         self.color_detected = False
+        self.color_count_thresh = 5
 
+        self.prev_color = ""
+        self.color_count = 0
         
-        self.collide_distance = 0.16
         self.stop_distance = 0.2
         self.start_turning = 0.7
         self.max_speed = 0.2
         
         self.turn_thresh = 5.
-        self.duration = 45.
+        self.duration = 20.
         self.l_d = 1.
         self.r_d = -1.
 
         self.speed_acc = 0.
         self.loop_count = 0.
-        self.collision_counter = 0
+        self.col_counter = 0
         self.colliding = False
+        self.col_len_scans = 170
 
-        self.go = False
-
+        self.c2 = False
+        self.c2_counter = 0
+        self.c2_distance = 0.16
+        self.color_array = ["green", "red", "blue"]
         self.tele_twist = Twist()
         self.tele_twist.linear.x = self.max_speed
         self.max_angle = 1.28
@@ -111,7 +115,8 @@ class Turtlebot3ObstacleDetection(Node):
             red = convert_data(data, 2)
             blue = convert_data(data, 4)
 
-            blue = blue * 2.35
+            blue = blue * 2.
+            green = green * 0.8
 
             total = green + red + blue
             
@@ -120,35 +125,47 @@ class Turtlebot3ObstacleDetection(Node):
             blue = blue / total
 
             if(green > threshold):
-                self.color_detect = "green"
+                color_detect = "green"
             elif(red > threshold):
-                self.color_detect = "red"
+                color_detect = "red"
             elif(blue > threshold):
-                self.color_detect = "blue"
+                color_detect = "blue"
             else:
-                self.color_detect = "no color detected"
+                color_detect = "no color detected"
 
-
+            print(f"Blue: {blue}, green: {green}, red: {red}")
+            
+           
             if not self.color_detected:
-                if self.color_detect == "green":
-                    self.counter_green += 1
-                    self.color_detected = True
-                    
-                elif self.color_detect == "red":
-                    self.counter_red += 1
-                    self.color_detected = True
-
-                elif self.color_detect == "blue":
-                    self.counter_blue += 1
-                    self.color_detected = True
+                if(color_detect == self.prev_color):
+                    self.color_count += 1
+                else:
+                    self.color_count = 0
                 
+
+                if self.color_count >= self.color_count_thresh:
+                    if color_detect == "green":
+                        self.counter_green += 1
+                        self.color_detected = True
+                        
+                    elif color_detect == "red":
+                        self.counter_red += 1
+                        self.color_detected = True
+
+                    elif color_detect == "blue":
+                        self.counter_blue += 1
+                        self.color_detected = True
+                    
+                    self.color_count = 0
+     
             else:
                 # print("im currently at a color")
-                if not self.color_detect in ["green", "red", "blue"]:
+                print("I am seeing: " + color_detect)
+                if not color_detect in self.color_array:
                     self.color_detected = False
             
-                
-            print("\ncolor detected: ", self.color_detect)
+            self.prev_color = color_detect
+            # print("\ncolor detected: ", self.color_detect)
 
     # ____________________________________RGB SENSOR____________________________________
 
@@ -174,11 +191,12 @@ class Turtlebot3ObstacleDetection(Node):
         #     self.get_logger().info("Time limit reached. Shutting down node.")
         #     rclpy.shutdown()
         #     return
-        
+        self.get_and_update_color()
+
         if self.has_scan_received:
             self.detect_obstacle()
 
-        self.get_and_update_color()
+       
         
 
     # Lineær udvikling af konstanten
@@ -226,7 +244,8 @@ class Turtlebot3ObstacleDetection(Node):
     def stop_running(self):
         # Printer gennemsnitshastighed
         print(f"Average Linear Speed: {self.speed_acc / self.loop_count}")
-        print(f"Collision counter: {self.collision_counter}")
+        print(f"Collision counter: {self.col_counter}")
+        print(f"C2 counter: {self.c2_counter}")
         print(f"Color detected:\n Red: {self.counter_red}, Green: {self.counter_green}, Blue: {self.counter_blue}")
         
         # Stopper robotten
@@ -236,11 +255,8 @@ class Turtlebot3ObstacleDetection(Node):
         self.cmd_vel_pub.publish(twist)
             
 
-    def detect_obstacle(self):
-
-        len_scan_range = len(self.scan_ranges)
+    def set_distances(self, len_scan_range):
         range_size = int(len_scan_range / self.divisions)
-
         left_distances = []
         for i in range(self.divisions // 4):
             min_val = min(self.scan_ranges[range_size * i: range_size * (i + 1)])
@@ -251,32 +267,33 @@ class Turtlebot3ObstacleDetection(Node):
             min_val = min(self.scan_ranges[(len_scan_range-1) - range_size * (i + 1) : (len_scan_range-1) - range_size * i])
             right_distances.append(min_val)
         
+        return right_distances, left_distances
+
+    def col_func(self, is_colliding, measured, thresh, counter):
+        if(is_colliding):
+            if measured > thresh:
+                is_colliding = False
+        elif measured < thresh:
+            is_colliding = True
+            counter += 1
+        
+        return is_colliding, counter
+    
+    def detect_obstacle(self):
+
+        len_scan_ranges = len(self.scan_ranges)
+        right_distances, left_distances = self.set_distances(len_scan_ranges)
+        
         front_distance = min(left_distances[0], right_distances[0])
-
-        # temp_array = self.scan_ranges[-range_size:] + self.scan_ranges[:range_size]
-        # if(self.go):
-        #     dif = [a - b for a, b in zip(temp_array, self.prev_array)]
-        #     print(f"minimum: {min(dif)}, maximum: {max(dif)}")
-        # else:
-        #     self.go = True
-        # self.prev_array = temp_array
-        # ## TIDLIGERE VERSION ##front_distance = min(self.scan_ranges[mid_index - front_range: mid_index + front_range]) 
         
-        # min_val_lobe = min(min(left_distances), min(right_distances))
-        # print(f"min val lobe:{min_val_lobe}")
-        # if(not self.colliding):
-        #     if min_val_lobe < self.collide_distance:
-        #         self.collision_counter+=1
-        #         print("_______________I COLLIDED____________________")
-        #         self.colliding = True
-        # else:
-        #     print("I am currently colliding!")
-        #     if min_val_lobe > self.collide_distance:
-        #         self.colliding = False
-
         twist = Twist()
-        # 1) Checks if it should stop
+
+        min_dist = min(left_distances + right_distances)
+        self.colliding, self.col_counter = self.col_func(self.colliding, len_scan_ranges, self.col_len_scans, self.col_counter)
+        self.c2, self.c2_counter = self.col_func(self.c2, min_dist, self.c2_distance, self.c2_counter)
         
+        
+        # 1) Checks if it should stop
         if front_distance < self.stop_distance:
             twist.linear.x = 0.0
             self.set_rot_d(right_distances, left_distances)
@@ -292,6 +309,11 @@ class Turtlebot3ObstacleDetection(Node):
                   
         else:
             twist = self.tele_twist
+        
+        if self.prev_color in self.color_array:
+            if(twist.linear.x > self.max_speed * 0.7):
+                print("Slowing because color")
+                twist.linear.x = self.max_speed * 0.7
 
         self.speed_acc += twist.linear.x
         self.loop_count += 1
