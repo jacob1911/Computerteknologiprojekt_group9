@@ -32,9 +32,10 @@ led = LED(17)
 def convert_data(data, index):
     return data[index + 1] + data[index] / 256
 
-red_thresh = 0.36
-blue_thresh = 0.28
-green_thresh = 0.30
+red_thresh = 0.40
+green_max = 0.31
+blue_max = 0.27
+bg_sum_max = 0.55
 
 class Turtlebot3ObstacleDetection(Node):
 
@@ -47,7 +48,7 @@ class Turtlebot3ObstacleDetection(Node):
         print('----------------------------------------------')
 
         # Amount of time program runs
-        self.duration = 10.
+        self.duration = 120.
 
         # Scan range variables
         self.prev_array = []
@@ -62,7 +63,7 @@ class Turtlebot3ObstacleDetection(Node):
         self.color_detected = False
         self.color_count_thresh = 2
         self.color_count = 0
-        self.prev_readings = [0, 0, 0, 0]
+        self.prev_readings = [0, 0, 0, 0, 0, 0, 0, 0]
         self.color_detect_factor = 0.2
         
         # Movement variables
@@ -77,15 +78,22 @@ class Turtlebot3ObstacleDetection(Node):
         # Variables for colliding with scan_len
         self.speed_acc = 0.
         self.loop_count = 0.
-        self.col_counter = 0
-        self.colliding = False
+        self.coll_counter = 0
+        self.coll_front = False
         self.collide_len_scans = 190
         self.normal_len_scans = 210
+        
+        # Variables regarding edge collisions
+        self.wrong_r_readings = 0
+        self.wrong_l_readings = 0
+        self.coll_left = False
+        self.coll_right = False
+        self.wrong_readings_thresh = 30
 
         self.zero_counter = 0
-        self.im_stuck_iteration = 5
-        self.zero_thresh = 20
-        self.backing_up = False
+        self.im_stuck_iteration = 10
+        self.zero_thresh = 60
+        self.collision = False
         self.im_stuck = False
         self.loop_count_copy = 0
 
@@ -145,7 +153,8 @@ class Turtlebot3ObstacleDetection(Node):
             
 
 
-            if (red > red_thresh) and (blue < blue_thresh) and (green < green_thresh):
+            if red > red_thresh and \
+                ((green < green_max and blue < blue_max) or green + blue < bg_sum_max):
                 self.prev_readings.insert(0,1)
                 self.color_count += 1
 
@@ -160,7 +169,7 @@ class Turtlebot3ObstacleDetection(Node):
                 sum += reading
 
 
-            print(self.prev_readings)
+            # print(self.prev_readings)
 
             if(self.color_detected and sum == 0):
                 self.color_detected = False
@@ -177,12 +186,18 @@ class Turtlebot3ObstacleDetection(Node):
 
     def scan_callback(self, msg):
         self.scan_ranges = msg.ranges
-        
+        self.wrong_r_readings = 0
+        self.wrong_l_readings = 0
         # Setting all bad values, inf and nan, to 3.5
         for i in range(len(self.scan_ranges)):
             cur_val = self.scan_ranges[i]
             if (not (0 < cur_val and cur_val <= 3.5)):
                 self.scan_ranges[i] = 3.5
+                if(i < len(self.scan_ranges) // 4):
+                    self.wrong_l_readings += 1
+                elif(i > len(self.scan_ranges) // 4 * 3):
+                    self.wrong_r_readings += 1
+
         
         self.has_scan_received = True
 
@@ -249,7 +264,7 @@ class Turtlebot3ObstacleDetection(Node):
     def stop_running(self):
         # Printer gennemsnitshastighed
         print(f"Average Linear Speed: {self.speed_acc / self.loop_count}")
-        print(f"Collision counter: {self.col_counter}")
+        print(f"Collision counter: {self.coll_counter}")
         print(f"C2 counter: {self.c2_counter}")
         print(f"Victims detected: {self.victim_count}")
         
@@ -274,15 +289,15 @@ class Turtlebot3ObstacleDetection(Node):
         
         return right_distances, left_distances
 
-    def collide_func(self, is_colliding, measured, thresh, counter):
+    def collide_func(self, is_colliding, measured, thresh):
         if(is_colliding):
             if measured > thresh:
                 is_colliding = False
         elif measured < thresh:
             is_colliding = True
-            counter += 1
+            # counter += 1
         
-        return is_colliding, counter
+        return is_colliding
     
     def detect_obstacle(self):
 
@@ -294,14 +309,30 @@ class Turtlebot3ObstacleDetection(Node):
         twist = Twist()
 
         min_dist = min(left_distances + right_distances)
-        self.colliding, self.col_counter = self.collide_func(self.colliding, len_scan_ranges, self.collide_len_scans, self.col_counter)
-        self.c2, self.c2_counter = self.collide_func(self.c2, min_dist, self.c2_distance, self.c2_counter)
-
-        if(self.colliding):
-            self.backing_up = True
+        
+        # Checks for frontal collision
+        self.coll_front = self.collide_func(self.coll_front, len_scan_ranges, self.collide_len_scans)
+        
+        # Checks for collisions to the left
+        self.coll_left = self.collide_func(self.coll_left, -self.wrong_l_readings, -self.wrong_readings_thresh)
+        
+        # Checks for collisions to the right
+        self.coll_right = self.collide_func(self.coll_right, -self.wrong_r_readings, -self.wrong_readings_thresh)
+        
+        self.c2 = self.collide_func(self.c2, min_dist, self.c2_distance)
+        
+        if(self.coll_front or self.coll_left or self.coll_right):
+            if(not self.collision):
+                self.coll_counter += 1
+            self.collision = True
             self.loop_count_copy = self.loop_count
 
+
+
         # print(f"Scan range len: {len_scan_ranges}")
+        # print(f"Wrong L: {self.wrong_l_readings}, Wrong R: {self.wrong_r_readings}")
+        # print(f"Left distances: {left_distances}")
+        # print(f"Right distances: {right_distances}")
 
         if self.zero_counter > self.zero_thresh and not self.im_stuck:
             self.im_stuck = True
@@ -311,12 +342,12 @@ class Turtlebot3ObstacleDetection(Node):
 
         # 0) If the robot should be backing
 
-        if self.im_stuck or self.backing_up:
+        if self.im_stuck or self.collision:
             twist.linear.x = -self.max_speed
             twist.angular.z = 0.
             if self.loop_count > self.loop_count_copy + self.im_stuck_iteration:
                 self.im_stuck = False
-                self.backing_up = False
+                self.collision = False
             
         
         # 1) Checks if it should stop
