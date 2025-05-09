@@ -25,6 +25,8 @@ from sensor_msgs.msg import LaserScan
 import time as t
 import numpy as np
 import smbus
+import math
+import csv
 
 from gpiozero import LED
 led = LED(17)
@@ -32,10 +34,11 @@ led = LED(17)
 def convert_data(data, index):
     return data[index + 1] + data[index] / 256
 
-red_thresh = 0.40
-green_max = 0.31
+red_thresh = 0.46
+green_max = 0.305
 blue_max = 0.27
-bg_sum_max = 0.55
+red_high_thresh = 0.5
+blue_high_thresh = 0.32
 
 class Turtlebot3ObstacleDetection(Node):
 
@@ -48,7 +51,7 @@ class Turtlebot3ObstacleDetection(Node):
         print('----------------------------------------------')
 
         # Amount of time program runs
-        self.duration = 120.
+        self.duration = 30.
 
         # Scan range variables
         self.prev_array = []
@@ -67,11 +70,11 @@ class Turtlebot3ObstacleDetection(Node):
         self.color_detect_factor = 0.2
         
         # Movement variables
-        self.stop_distance = 0.2
-        self.start_turning = 0.7
-        self.max_speed = 0.2
+        self.stop_distance = 0.165
+        self.start_turning = 0.55
+        self.max_speed = 0.21
         
-        self.turn_thresh = 5.
+        self.turn_thresh = 0.05
         self.l_d = 1.
         self.r_d = -1.
 
@@ -88,7 +91,10 @@ class Turtlebot3ObstacleDetection(Node):
         self.wrong_l_readings = 0
         self.coll_left = False
         self.coll_right = False
-        self.wrong_readings_thresh = 30
+        self.wrong_readings_thresh = 25
+        self.wrong_reading_divs = self.divisions // 2
+        self.wrong_readings = [0] * self.wrong_reading_divs
+        
 
         self.zero_counter = 0
         self.im_stuck_iteration = 10
@@ -102,7 +108,7 @@ class Turtlebot3ObstacleDetection(Node):
         self.c2_counter = 0
         self.c2_distance = 0.16
 
-
+        # Movement variables
         self.tele_twist = Twist()
         self.tele_twist.linear.x = self.max_speed
         self.max_angle = 1.28
@@ -110,6 +116,16 @@ class Turtlebot3ObstacleDetection(Node):
         self.turn_factor = 1.
         qos = QoSProfile(depth=10)
 
+        # Logging variables
+        self.lin_speed = 0
+        self.red = 0
+        self.green = 0
+        self.blue = 0
+        self.start_time = t.time()
+        self.log_path = '/home/ubuntu/log.csv'
+        self.log_file = open(self.log_path, mode='w', newline='', encoding='utf-8')
+        self.csv_writer = csv.writer(self.log_file, delimiter=';')
+        self.csv_writer.writerow(['Time','Red','Green','Blue','Scan_len','Nan_L','Nan_R','Linear_Speed','Victim','Collision'])
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', qos)
 
         self.scan_sub = self.create_subscription(
@@ -140,7 +156,7 @@ class Turtlebot3ObstacleDetection(Node):
             red = convert_data(data, 2)
             blue = convert_data(data, 4)
 
-            blue = blue * 2.
+            blue = blue * 1.8
             green = green * 0.8
             total = green + red + blue
             
@@ -148,16 +164,17 @@ class Turtlebot3ObstacleDetection(Node):
             red = red / total
             blue = blue / total
 
-            print(f"red: {red}, green: {green}, blue: {blue}")
+            # print(f"red: {red}, green: {green}, blue: {blue}")
 
             
-
-
-            if red > red_thresh and \
-                ((green < green_max and blue < blue_max) or green + blue < bg_sum_max):
-                self.prev_readings.insert(0,1)
-                self.color_count += 1
-
+            # Red is the biggest color and thresh values hold
+            if (red > green and red > blue) and\
+                    red > red_thresh and\
+                        ((green < green_max and blue < blue_max) or \
+                            (red > red_high_thresh and blue < blue_high_thresh)):
+                    
+                    self.prev_readings.insert(0,1)
+                    self.color_count += 1
             else:
                 self.prev_readings.insert(0,0)
                 self.color_count = 0
@@ -168,7 +185,7 @@ class Turtlebot3ObstacleDetection(Node):
             for reading in self.prev_readings:
                 sum += reading
 
-
+            
             # print(self.prev_readings)
 
             if(self.color_detected and sum == 0):
@@ -180,6 +197,12 @@ class Turtlebot3ObstacleDetection(Node):
                 self.victim_count += 1
                 self.color_detected = True
                 led.on()
+            
+            # Color values are set for logging
+            self.red = red
+            self.green = green
+            self.blue = blue
+
 
     # ____________________________________RGB SENSOR____________________________________
 
@@ -188,15 +211,24 @@ class Turtlebot3ObstacleDetection(Node):
         self.scan_ranges = msg.ranges
         self.wrong_r_readings = 0
         self.wrong_l_readings = 0
+        self.wrong_readings = [0] * self.wrong_reading_divs
         # Setting all bad values, inf and nan, to 3.5
         for i in range(len(self.scan_ranges)):
             cur_val = self.scan_ranges[i]
-            if (not (0 < cur_val and cur_val <= 3.5)):
+            if (not (0 <= cur_val and cur_val <= 3.5)):
+                if(math.isnan(cur_val)):
+                    self.wrong_readings[((int)(i / len(self.scan_ranges) * self.wrong_reading_divs))] += 1
                 self.scan_ranges[i] = 3.5
-                if(i < len(self.scan_ranges) // 4):
-                    self.wrong_l_readings += 1
-                elif(i > len(self.scan_ranges) // 4 * 3):
-                    self.wrong_r_readings += 1
+                
+
+                # if(i < len(self.scan_ranges) // 4):
+                #     self.wrong_l_readings += 1
+                # elif(i > len(self.scan_ranges) // 4 * 3):
+                #     self.wrong_r_readings += 1
+        
+        for i in range(2):
+            self.wrong_l_readings += self.wrong_readings[i]
+            self.wrong_r_readings += self.wrong_readings [-(1+i)]
 
         
         self.has_scan_received = True
@@ -205,29 +237,30 @@ class Turtlebot3ObstacleDetection(Node):
         self.tele_twist = msg
     
     def timer_callback(self):
-        # current_time = self.get_clock().now().nanoseconds / 1e9
-        
-        # if int(current_time - self.start_time) > self.run_time:
-        #     self.get_logger().info("Time limit reached. Shutting down node.")
-        #     rclpy.shutdown()
-        #     return
         self.get_and_update_color()
 
         if self.has_scan_received:
             self.detect_obstacle()
+        
+        self.csv_writer.writerow([t.time() - self.start_time, self.red, self.green, self.blue,\
+                                    len(self.scan_ranges), self.wrong_l_readings, self.wrong_r_readings,\
+                                        self.lin_speed,self.color_detected, self.collision])
+        
+            
 
        
         
 
     # Lineær udvikling af konstanten
     def angle_factor(self,front_d):
-        x = abs(self.start_turning - front_d)
-        return x / (self.start_turning-self.stop_distance)
+        if(front_d > self.start_turning): return 0.
+        if(front_d < self.stop_distance): return 1.
+        return (-front_d + self.start_turning) / (self.start_turning-self.stop_distance)
     
     def speed_factor(self, front_d):
-        if(front_d > self.start_turning):
-            return 1.
-        return front_d / (self.start_turning - self.stop_distance)
+        if(front_d > self.start_turning): return 1.
+        if(front_d < self.stop_distance): return 0.
+        return (front_d - self.stop_distance) / (self.start_turning - self.stop_distance)
 
 
 
@@ -237,29 +270,44 @@ class Turtlebot3ObstacleDetection(Node):
         for i in range(self.divisions // 4 - 1):
             min_r = min(r_dist[i], r_dist[i+1])
             min_l = min(l_dist[i], l_dist[i+1])
-            if(self.stop_distance * 1.5 < max(min_l, min_r)):
+            
+            # If the biggest distance measured is greater than stop_distance*1.5 we turn the shortest way
+            if(self.stop_distance * 2.2 < max(min_l, min_r) and abs(min_r - min_l) > self.turn_thresh):
+                print("Big")
                 if(min_l < min_r):
                     self.turn_factor = self.r_d
                     return
                 else:
                     self.turn_factor = self.l_d
                     return
-            if(self.start_turning / 1.5 < min(r_dist[i], r_dist[i+1])):
-                self.turn_factor = self.r_d
-                return
-            elif(self.start_turning / 1.5 < min(l_dist[i], l_dist[i+1])):
-                self.turn_factor = self.l_d
-                return
+
+        for i in range(self.divisions // 4 - 1):
+            min_r = min(r_dist[i], r_dist[i+1])
+            min_l = min(l_dist[i], l_dist[i+1])
+            
+            # If the biggest distance measured is greater than stop_distance*1.5 we turn the shortest way
+            if(self.stop_distance * 1.5 < max(min_l, min_r) and abs(min_r - min_l) > self.turn_thresh):
+                print("Medium")
+                if(min_l < min_r):
+                    self.turn_factor = self.r_d
+                    return
+                else:
+                    self.turn_factor = self.l_d
+                    return
+          
         
         min_l = min(l_dist[1], l_dist[2])
         min_r = min(r_dist[1], r_dist[2])
-        if(abs(min_l - min_r) < self.turn_thresh):
-            self.turn_factor = self.l_d
-        elif(min_l < min_r):
-            self.turn_factor = self.r_d
+        if(abs(min_l - min_r) > self.turn_thresh / 2):
+            print("Small")
+            if(min_l > min_r):
+                self.turn_factor = self.l_d
+            else:
+                self.turn_factor = self.r_d
+            return
 
-        else:
-            self.turn_factor = self.l_d
+        self.turn_factor = self.l_d
+        print("Default")
     
     def stop_running(self):
         # Printer gennemsnitshastighed
@@ -313,15 +361,16 @@ class Turtlebot3ObstacleDetection(Node):
         # Checks for frontal collision
         self.coll_front = self.collide_func(self.coll_front, len_scan_ranges, self.collide_len_scans)
         
-        # Checks for collisions to the left
+        # # Checks for collisions to the left
         self.coll_left = self.collide_func(self.coll_left, -self.wrong_l_readings, -self.wrong_readings_thresh)
         
-        # Checks for collisions to the right
+        # # Checks for collisions to the right
         self.coll_right = self.collide_func(self.coll_right, -self.wrong_r_readings, -self.wrong_readings_thresh)
         
         self.c2 = self.collide_func(self.c2, min_dist, self.c2_distance)
         
         if(self.coll_front or self.coll_left or self.coll_right):
+            print("Now I'm colliding")
             if(not self.collision):
                 self.coll_counter += 1
             self.collision = True
@@ -330,6 +379,7 @@ class Turtlebot3ObstacleDetection(Node):
 
 
         # print(f"Scan range len: {len_scan_ranges}")
+        # print(self.wrong_readings)
         # print(f"Wrong L: {self.wrong_l_readings}, Wrong R: {self.wrong_r_readings}")
         # print(f"Left distances: {left_distances}")
         # print(f"Right distances: {right_distances}")
@@ -343,6 +393,7 @@ class Turtlebot3ObstacleDetection(Node):
         # 0) If the robot should be backing
 
         if self.im_stuck or self.collision:
+            
             twist.linear.x = -self.max_speed
             twist.angular.z = 0.
             if self.loop_count > self.loop_count_copy + self.im_stuck_iteration:
@@ -374,12 +425,15 @@ class Turtlebot3ObstacleDetection(Node):
             if(twist.linear.x > self.max_speed * self.color_detect_factor):
                 twist.linear.x = self.max_speed * self.color_detect_factor
 
+        
+        self.lin_speed = twist.linear.x
+
         if abs(twist.linear.x) < 0.01:
             self.zero_counter +=1 
         else:
             self.zero_counter = 0
 
-        self.speed_acc += twist.linear.x
+        self.speed_acc += abs(twist.linear.x)
         self.loop_count += 1
         self.cmd_vel_pub.publish(twist)
 
