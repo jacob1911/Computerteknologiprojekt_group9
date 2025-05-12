@@ -31,7 +31,6 @@ def main(args=None):
     end_time = start_time + turtlebot3_obstacle_detection.duration
     while t.time() < end_time:
         rclpy.spin_once(turtlebot3_obstacle_detection, timeout_sec=0.1)
-    print("Joe Biden")
 
     turtlebot3_obstacle_detection.stop_running()
     turtlebot3_obstacle_detection.destroy_node()
